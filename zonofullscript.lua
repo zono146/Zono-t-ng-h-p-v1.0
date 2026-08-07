@@ -4,8 +4,9 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Trạng thái Aim
+-- Trạng thái Aim & Biến Lưu Mục Tiêu Khóa
 local aimEnabled = false
+local lockedTarget = nil -- Dùng để "khóa cứng" 1 mục tiêu duy nhất
 
 --------------------------------------------------------------------------------
 -- 1. TẠO GIAO DIỆN MENU BẬT / TẮT (GUI)
@@ -45,7 +46,7 @@ toggleBtn.TextSize = 16
 toggleBtn.Parent = mainFrame
 
 --------------------------------------------------------------------------------
--- 2. HÀM QUÉT MỤC TIÊU (PLAYERS + NPCS)
+-- 2. HÀM QUÉT DÒ TÌM MỤC TIÊU BAN ĐẦU
 --------------------------------------------------------------------------------
 local function GetBestTarget()
 	local myChar = LocalPlayer.Character
@@ -53,34 +54,33 @@ local function GetBestTarget()
 	local myPos = myChar.HumanoidRootPart.Position
 
 	local closestAngleTarget = nil
-	local smallestAngle = 35 -- Góc nhìn (độ)
+	local smallestAngle = 45 -- Mở rộng góc nhìn lên 45 độ để dễ nhận diện mục tiêu trước mặt hơn
 
 	local closestDistanceTarget = nil
 	local smallestDistance = math.huge
 
-	-- Lấy tất cả các Model trong Workspace (Bao gồm cả Player lẫn NPC)
+	-- Quét tất cả Model trong Workspace (Player + NPC)
 	for _, obj in pairs(workspace:GetDescendants()) do
 		if obj:IsA("Model") and obj ~= myChar then
 			local hum = obj:FindFirstChildOfClass("Humanoid")
 			local hrp = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Head")
 
-			-- Kiểm tra xem đây có phải nhân vật/NPC còn sống không
 			if hum and hrp and hum.Health > 0 then
 				local targetPos = hrp.Position
 				local dist = (targetPos - myPos).Magnitude
 
-				-- 1. Tính góc nhìn từ Camera đến mục tiêu
+				-- Tính góc nhìn từ Camera đến mục tiêu
 				local camDirection = Camera.CFrame.LookVector
 				local dirToTarget = (targetPos - Camera.CFrame.Position).Unit
 				local angle = math.deg(math.acos(camDirection:Dot(dirToTarget)))
 
-				-- Lựa chọn ưu tiên góc nhìn
+				-- Ưu tiên 1: Mục tiêu nằm trước mặt (trong góc nhìn)
 				if angle < smallestAngle then
 					smallestAngle = angle
 					closestAngleTarget = hrp
 				end
 
-				-- Lựa chọn ưu tiên khoảng cách (xung quanh 360 độ)
+				-- Ưu tiên 2: Mục tiêu gần nhất xung quanh
 				if dist < smallestDistance then
 					smallestDistance = dist
 					closestDistanceTarget = hrp
@@ -89,36 +89,52 @@ local function GetBestTarget()
 		end
 	end
 
-	-- Ưu tiên 1: Nhắm vào NPC/Player đang nhìn
 	if closestAngleTarget then
 		return closestAngleTarget
 	end
 
-	-- Ưu tiên 2: Nhắm vào NPC/Player gần nhất xung quanh
 	return closestDistanceTarget
 end
 
 --------------------------------------------------------------------------------
--- 3. VÒNG LẶP AIM
+-- 3. VÒNG LẶP AIM (KHÓA MỤC TIÊU CỐ ĐỊNH)
 --------------------------------------------------------------------------------
 RunService.RenderStepped:Connect(function()
-	if aimEnabled then
-		local targetPart = GetBestTarget()
-		if targetPart then
-			Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+	if aimEnabled and lockedTarget then
+		-- Kiểm tra xem mục tiêu được khóa còn tồn tại và còn sống hay không
+		local parentModel = lockedTarget.Parent
+		local hum = parentModel and parentModel:FindFirstChildOfClass("Humanoid")
+
+		if parentModel and hum and hum.Health > 0 then
+			-- Khóa cứng Camera vào đúng mục tiêu đã chọn
+			Camera.CFrame = CFrame.new(Camera.CFrame.Position, lockedTarget.Position)
+		else
+			-- Nếu mục tiêu chết hoặc biến mất, tự động nhả khóa
+			lockedTarget = nil
 		end
 	end
 end)
 
 --------------------------------------------------------------------------------
--- 4. BẬT / TẮT
+-- 4. BẬT / TẮT (KÍCH HOẠT LỌC MỤC TIÊU)
 --------------------------------------------------------------------------------
 toggleBtn.MouseButton1Click:Connect(function()
 	aimEnabled = not aimEnabled
 	if aimEnabled then
-		toggleBtn.Text = "AUTO AIM: ON"
-		toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+		-- Khi BẬT: Tìm và KHÓA duy nhất 1 mục tiêu tại thời điểm đó
+		lockedTarget = GetBestTarget()
+
+		if lockedTarget then
+			toggleBtn.Text = "AUTO AIM: LOCKED"
+			toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+		else
+			-- Nếu xung quanh không có ai
+			toggleBtn.Text = "NO TARGET!"
+			toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
+		end
 	else
+		-- Khi TẮT: Giải phóng mục tiêu đã khóa
+		lockedTarget = nil
 		toggleBtn.Text = "AUTO AIM: OFF"
 		toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
 	end
