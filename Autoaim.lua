@@ -1,6 +1,5 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager") -- Dùng để giả lập bấm phím
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -8,7 +7,6 @@ local Camera = workspace.CurrentCamera
 -- Trạng thái Aim & Biến Lưu Mục Tiêu Khóa
 local aimEnabled = false
 local lockedTarget = nil
-local isExecutingVariant = false -- Chống spam nút biến thể
 
 --------------------------------------------------------------------------------
 -- 1. TẠO GIAO DIỆN MENU BẬT / TẮT (GUI)
@@ -18,9 +16,8 @@ screenGui.Name = "HeartBattlegroundAimGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Mở rộng chiều cao Frame từ 100 lên 150 để vừa 2 nút
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 200, 0, 150)
+mainFrame.Size = UDim2.new(0, 200, 0, 100)
 mainFrame.Position = UDim2.new(0.05, 0, 0.4, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 mainFrame.BorderSizePixel = 2
@@ -38,27 +35,15 @@ titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.TextSize = 14
 titleLabel.Parent = mainFrame
 
--- Nút 1: AUTO AIM (Toggle)
 local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0.8, 0, 0, 35)
-toggleBtn.Position = UDim2.new(0.1, 0, 0.28, 0)
+toggleBtn.Size = UDim2.new(0.8, 0, 0.4, 0)
+toggleBtn.Position = UDim2.new(0.1, 0, 0.45, 0)
 toggleBtn.Text = "AUTO AIM: OFF"
 toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
 toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleBtn.Font = Enum.Font.SourceSansBold
-toggleBtn.TextSize = 14
+toggleBtn.TextSize = 16
 toggleBtn.Parent = mainFrame
-
--- Nút 2: TÍNH NĂNG THỬ NGHIỆM BIẾN THỂ (Instant Trigger)
-local variantBtn = Instance.new("TextButton")
-variantBtn.Size = UDim2.new(0.8, 0, 0, 35)
-variantBtn.Position = UDim2.new(0.1, 0, 0.62, 0)
-variantBtn.Text = "TEST VARIANT (DOUBLE R)"
-variantBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 150)
-variantBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-variantBtn.Font = Enum.Font.SourceSansBold
-variantBtn.TextSize = 13
-variantBtn.Parent = mainFrame
 
 --------------------------------------------------------------------------------
 -- 2. HÀM QUÉT DÒ TÌM MỤC TIÊU BAN ĐẦU
@@ -122,19 +107,19 @@ RunService.RenderStepped:Connect(function()
 			local lookAtPos = Vector3.new(targetPos.X, myPos.Y, targetPos.Z)
 			myHRP.CFrame = CFrame.new(myPos, lookAtPos)
 
-			-- 2. Lấy khoảng cách Zoom hiện tại của người chơi
+			-- 2. Lấy khoảng cách Zoom hiện tại của người chơi (hỗ trợ phóng to/thu nhỏ)
 			local currentZoom = (Camera.CFrame.Position - myPos).Magnitude
-			if currentZoom < 2 then currentZoom = 10 end
+			if currentZoom < 2 then currentZoom = 10 end -- Mặc định nếu quá gần
 
 			-- 3. Tính toán hướng từ Nhân vật -> Đến Đối thủ
 			local dirToTarget = (targetPos - myPos).Unit
 			if dirToTarget.Magnitude == 0 then dirToTarget = myHRP.CFrame.LookVector end
 
-			-- 4. Đặt Camera ở PHÍA SAU LƯNG nhân vật
+			-- 4. Đặt Camera ở PHÍA SAU LƯNG nhân vật (lùi lại theo hướng đối thủ + nhếch cao lên một chút)
 			local camOffset = -dirToTarget * currentZoom + Vector3.new(0, 2.5, 0)
 			local newCamPos = myPos + camOffset
 
-			-- 5. Cập nhật Camera nhìn về phía đối thủ
+			-- 5. Cập nhật Camera luôn nhìn về phía đối thủ
 			Camera.CFrame = CFrame.new(newCamPos, targetPos)
 		else
 			-- Mục tiêu chết hoặc hủy
@@ -144,7 +129,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 --------------------------------------------------------------------------------
--- 4. BẬT / TẮT AUTO AIM
+-- 4. BẬT / TẮT
 --------------------------------------------------------------------------------
 toggleBtn.MouseButton1Click:Connect(function()
 	aimEnabled = not aimEnabled
@@ -163,34 +148,4 @@ toggleBtn.MouseButton1Click:Connect(function()
 		toggleBtn.Text = "AUTO AIM: OFF"
 		toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
 	end
-end)
-
---------------------------------------------------------------------------------
--- 5. KÍCH HOẠT THỬ NGHIỆM BIẾN THỂ (GIẢ LẬP NHẤN R -> 0.6S -> NHẤN R)
---------------------------------------------------------------------------------
-variantBtn.MouseButton1Click:Connect(function()
-	if isExecutingVariant then return end -- Tránh bấm nhầm liên tục khi đang chờ 0.6s
-	isExecutingVariant = true
-	
-	-- Đổi màu & chữ báo hiệu đang chạy
-	variantBtn.Text = "EXECUTING..."
-	variantBtn.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
-
-	-- 1. Nhấn phím R lần đầu
-	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.R, false, game)
-	task.wait(0.05)
-	VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.R, false, game)
-
-	-- 2. Đợi đúng 0.6 giây (Timing chuẩn)
-	task.wait(0.6)
-
-	-- 3. Nhấn phím R lần hai
-	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.R, false, game)
-	task.wait(0.05)
-	VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.R, false, game)
-
-	-- Khôi phục lại nút ban đầu
-	variantBtn.Text = "TEST VARIANT (DOUBLE R)"
-	variantBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 150)
-	isExecutingVariant = false
 end)
