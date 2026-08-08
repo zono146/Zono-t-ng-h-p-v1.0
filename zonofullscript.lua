@@ -28,7 +28,7 @@ mainFrame.Parent = screenGui
 
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 30)
-titleLabel.Text = "HEART BATTLEGROUND"
+titleLabel.Text = "AUTO AIM"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 titleLabel.Font = Enum.Font.SourceSansBold
