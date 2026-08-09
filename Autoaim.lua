@@ -1,3 +1,4 @@
+-- Services & Variables
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
@@ -9,84 +10,7 @@ local aimEnabled = false
 local lockedTarget = nil
 
 --------------------------------------------------------------------------------
--- 1. TẠO KHUNG MAIN GUI MỚI (RỘNG RÃI & MỞ RỘNG)
---------------------------------------------------------------------------------
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "HeartBattlegroundTestBench"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
--- Bảng Main mới rộng 220px, cao 240px (tha hồ chứa tính năng)
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 220, 0, 240)
-mainFrame.Position = UDim2.new(0.05, 0, 0.35, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-mainFrame.BorderSizePixel = 2
-mainFrame.BorderColor3 = Color3.fromRGB(255, 60, 60)
-mainFrame.Active = true
-mainFrame.Draggable = true
-mainFrame.Parent = screenGui
-
--- Tiêu đề Bảng
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, 0, 0, 32)
-titleLabel.Text = "⚡ HEART BATTLEGROUND ⚡"
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-titleLabel.Font = Enum.Font.SourceSansBold
-titleLabel.TextSize = 14
-titleLabel.Parent = mainFrame
-
---------------------------------------------------------------------------------
--- GIAO DIỆN CÁC NÚT BẤM (UI BUTTONS)
---------------------------------------------------------------------------------
-
--- Nút 1: AUTO AIM (Ổn định)
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0.88, 0, 0, 35)
-toggleBtn.Position = UDim2.new(0.06, 0, 0.18, 0)
-toggleBtn.Text = "AUTO AIM: OFF"
-toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleBtn.Font = Enum.Font.SourceSansBold
-toggleBtn.TextSize = 14
-toggleBtn.Parent = mainFrame
-
--- Nút 2: TÍNH NĂNG THỬ NGHIỆM MỚI 1 (Slot 1)
-local expBtn1 = Instance.new("TextButton")
-expBtn1.Size = UDim2.new(0.88, 0, 0, 35)
-expBtn1.Position = UDim2.new(0.06, 0, 0.36, 0)
-expBtn1.Text = "[THỬ NGHIỆM 1] CHỜ YÊU CẦU..."
-expBtn1.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-expBtn1.TextColor3 = Color3.fromRGB(200, 200, 200)
-expBtn1.Font = Enum.Font.SourceSansBold
-expBtn1.TextSize = 12
-expBtn1.Parent = mainFrame
-
--- Nút 3: TÍNH NĂNG THỬ NGHIỆM MỚI 2 (Slot 2)
-local expBtn2 = Instance.new("TextButton")
-expBtn2.Size = UDim2.new(0.88, 0, 0, 35)
-expBtn2.Position = UDim2.new(0.06, 0, 0.54, 0)
-expBtn2.Text = "[THỬ NGHIỆM 2] CHỜ YÊU CẦU..."
-expBtn2.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-expBtn2.TextColor3 = Color3.fromRGB(200, 200, 200)
-expBtn2.Font = Enum.Font.SourceSansBold
-expBtn2.TextSize = 12
-expBtn2.Parent = mainFrame
-
--- Ghi chú nhỏ phía dưới
-local infoLabel = Instance.new("TextLabel")
-infoLabel.Size = UDim2.new(1, 0, 0, 30)
-infoLabel.Position = UDim2.new(0, 0, 0.82, 0)
-infoLabel.Text = "Dev Test Bench v2.0"
-infoLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
-infoLabel.BackgroundTransparency = 1
-infoLabel.Font = Enum.Font.SourceSansItalic
-infoLabel.TextSize = 12
-infoLabel.Parent = mainFrame
-
---------------------------------------------------------------------------------
--- 2. HÀM QUÉT DÒ TÌM MỤC TIÊU BAN ĐẦU
+-- 1. HÀM QUÉT DÒ TÌM MỤC TIÊU BAN ĐẦU
 --------------------------------------------------------------------------------
 local function GetBestTarget()
 	local myChar = LocalPlayer.Character
@@ -129,7 +53,7 @@ local function GetBestTarget()
 end
 
 --------------------------------------------------------------------------------
--- 3. VÒNG LẶP AIM (CAMERA GÓC NHÌN THỨ 3 ỔN ĐỊNH)
+-- 2. VÒNG LẶP AIM (RENDERSTEPPED)
 --------------------------------------------------------------------------------
 RunService.RenderStepped:Connect(function()
 	if aimEnabled and lockedTarget then
@@ -147,7 +71,7 @@ RunService.RenderStepped:Connect(function()
 			local lookAtPos = Vector3.new(targetPos.X, myPos.Y, targetPos.Z)
 			myHRP.CFrame = CFrame.new(myPos, lookAtPos)
 
-			-- 2. Lấy khoảng cách Zoom hiện tại
+			-- 2. Lấy khoảng cách Zoom hiện tại của người chơi
 			local currentZoom = (Camera.CFrame.Position - myPos).Magnitude
 			if currentZoom < 2 then currentZoom = 10 end
 
@@ -159,44 +83,73 @@ RunService.RenderStepped:Connect(function()
 			local camOffset = -dirToTarget * currentZoom + Vector3.new(0, 2.5, 0)
 			local newCamPos = myPos + camOffset
 
-			-- 5. Cập nhật Camera nhìn về phía đối thủ
+			-- 5. Cập nhật Camera luôn nhìn về phía đối thủ
 			Camera.CFrame = CFrame.new(newCamPos, targetPos)
 		else
-			-- Mục tiêu chết hoặc hủy
-			lockedTarget = nil
+			-- Mục tiêu chết/mất -> Tự động tìm lại mục tiêu mới nếu vẫn bật Aim
+			lockedTarget = GetBestTarget()
 		end
 	end
 end)
 
 --------------------------------------------------------------------------------
--- 4. SỰ KIỆN NÚT AUTO AIM
+-- 3. TẠO MENU REDZ V2 & KẾT NỐI TÍNH NĂNG AIM
 --------------------------------------------------------------------------------
-toggleBtn.MouseButton1Click:Connect(function()
-	aimEnabled = not aimEnabled
-	if aimEnabled then
-		lockedTarget = GetBestTarget()
+loadstring(game:HttpGet(("https://raw.githubusercontent.com/daucobonhi/Ui-Redz-V2/refs/heads/main/UiREDzV2.lua")))()
 
-		if lockedTarget then
-			toggleBtn.Text = "AUTO AIM: LOCKED"
-			toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
-		else
-			toggleBtn.Text = "NO TARGET!"
-			toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
-		end
-	else
-		lockedTarget = nil
-		toggleBtn.Text = "AUTO AIM: OFF"
-		toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-	end
-end)
+local Window = MakeWindow({
+  Hub = {
+    Title = "Zonoreal Hub",
+    Animation = "Zonoreal Hub"
+  },
+  Key = {
+    KeySystem = false,
+    Title = "",
+    Description = "",
+    KeyLink = "",
+    Keys = {""},
+    Notifi = {
+      Notifications = true,
+      CorrectKey = "Running",
+      Incorrectkey = "incorrect",
+      CopyKeyLink = "Copied"
+    }
+  }
+})
 
---------------------------------------------------------------------------------
--- 5. SỰ KIỆN CÁC NÚT THỬ NGHIỆM MỚI (CHỜ LẬP TRÌNH)
---------------------------------------------------------------------------------
-expBtn1.MouseButton1Click:Connect(function()
-	print("Đã bấm Ô Thử Nghiệm 1 - Chưa gán tính năng!")
-end)
+MinimizeButton({
+  Image = "http://www.roblox.com/asset/?id=93280542413490",
+  Size = {25, 25},
+  Color = Color3.fromRGB(10, 10, 10),
+  Corner = true,
+  Stroke = false,
+  StrokeColor = Color3.fromRGB(255, 0, 0)
+})
 
-expBtn2.MouseButton1Click:Connect(function()
-	print("Đã bấm Ô Thử Nghiệm 2 - Chưa gán tính năng!")
-end)
+------ Tab Thử Nghiệm
+local Tab1 = MakeTab({Name = "AIMBOT"})
+
+------ Các Chức Năng
+Tab1:AddToggle({
+  Name = "Auto Aim (Khóa Mục Tiêu)",
+  Description = "Tự động khóa Camera & xoay hướng mặt vào đối thủ",
+  Default = false,
+  Callback = function(Value)
+    aimEnabled = Value
+    if aimEnabled then
+      lockedTarget = GetBestTarget()
+    else
+      lockedTarget = nil
+    end
+  end
+})
+
+Tab1:AddButton({
+  Name = "Đổi Mục Tiêu (Re-target)",
+  Description = "Quét lại mục tiêu mới gần nhất",
+  Callback = function()
+    if aimEnabled then
+      lockedTarget = GetBestTarget()
+    end
+  end
+})
