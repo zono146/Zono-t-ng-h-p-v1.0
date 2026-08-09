@@ -1,15 +1,53 @@
--- LocalScript đặt trong StarterPlayerScripts
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
+-- Trạng thái Aim & Biến Lưu Mục Tiêu Khóa
 local aimEnabled = false
 local lockedTarget = nil
 
--- 1. HÀM QUÉT DÒ TÌM MỤC TIÊU
+--------------------------------------------------------------------------------
+-- 1. TẠO GIAO DIỆN MENU BẬT / TẮT (GUI)
+--------------------------------------------------------------------------------
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "HeartBattlegroundAimGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 200, 0, 100)
+mainFrame.Position = UDim2.new(0.05, 0, 0.4, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+mainFrame.BorderSizePixel = 2
+mainFrame.BorderColor3 = Color3.fromRGB(255, 50, 50)
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 30)
+titleLabel.Text = "HEART BATTLEGROUND"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.TextSize = 14
+titleLabel.Parent = mainFrame
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0.8, 0, 0.4, 0)
+toggleBtn.Position = UDim2.new(0.1, 0, 0.45, 0)
+toggleBtn.Text = "AUTO AIM: OFF"
+toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextSize = 16
+toggleBtn.Parent = mainFrame
+
+--------------------------------------------------------------------------------
+-- 2. HÀM QUÉT DÒ TÌM MỤC TIÊU BAN ĐẦU
+--------------------------------------------------------------------------------
 local function GetBestTarget()
 	local myChar = LocalPlayer.Character
 	if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
@@ -17,6 +55,7 @@ local function GetBestTarget()
 
 	local closestAngleTarget = nil
 	local smallestAngle = 45
+
 	local closestDistanceTarget = nil
 	local smallestDistance = math.huge
 
@@ -49,7 +88,9 @@ local function GetBestTarget()
 	return closestAngleTarget or closestDistanceTarget
 end
 
--- 2. VÒNG LẶP AIM (RENDERSTEPPED)
+--------------------------------------------------------------------------------
+-- 3. VÒNG LẶP AIM (GIỮ CAMERA TẬP TRUNG VÀO NHÂN VẬT & MỤC TIÊU)
+--------------------------------------------------------------------------------
 RunService.RenderStepped:Connect(function()
 	if aimEnabled and lockedTarget then
 		local myChar = LocalPlayer.Character
@@ -62,44 +103,49 @@ RunService.RenderStepped:Connect(function()
 			local targetPos = lockedTarget.Position
 			local myPos = myHRP.Position
 			
+			-- 1. Xoay nhân vật hướng mặt về phía đối thủ
 			local lookAtPos = Vector3.new(targetPos.X, myPos.Y, targetPos.Z)
 			myHRP.CFrame = CFrame.new(myPos, lookAtPos)
 
+			-- 2. Lấy khoảng cách Zoom hiện tại của người chơi (hỗ trợ phóng to/thu nhỏ)
 			local currentZoom = (Camera.CFrame.Position - myPos).Magnitude
-			if currentZoom < 2 then currentZoom = 10 end
+			if currentZoom < 2 then currentZoom = 10 end -- Mặc định nếu quá gần
 
+			-- 3. Tính toán hướng từ Nhân vật -> Đến Đối thủ
 			local dirToTarget = (targetPos - myPos).Unit
 			if dirToTarget.Magnitude == 0 then dirToTarget = myHRP.CFrame.LookVector end
 
+			-- 4. Đặt Camera ở PHÍA SAU LƯNG nhân vật (lùi lại theo hướng đối thủ + nhếch cao lên một chút)
 			local camOffset = -dirToTarget * currentZoom + Vector3.new(0, 2.5, 0)
 			local newCamPos = myPos + camOffset
 
+			-- 5. Cập nhật Camera luôn nhìn về phía đối thủ
 			Camera.CFrame = CFrame.new(newCamPos, targetPos)
 		else
-			lockedTarget = GetBestTarget()
+			-- Mục tiêu chết hoặc hủy
+			lockedTarget = nil
 		end
 	end
 end)
 
--- 3. BẮT SỰ KIỆN BẤM PHÍM ĐỂ TEST IN-GAME
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	
-	-- Bấm phím 'E' để Bật / Tắt Aim
-	if input.KeyCode == Enum.KeyCode.E then
-		aimEnabled = not aimEnabled
-		if aimEnabled then
-			lockedTarget = GetBestTarget()
-			print("[TEST STUDIO] Auto Aim: ON | Target:", lockedTarget and lockedTarget.Parent.Name or "None")
-		else
-			lockedTarget = nil
-			print("[TEST STUDIO] Auto Aim: OFF")
-		end
-	end
-	
-	-- Bấm phím 'R' để Đổi mục tiêu khác
-	if input.KeyCode == Enum.KeyCode.R and aimEnabled then
+--------------------------------------------------------------------------------
+-- 4. BẬT / TẮT
+--------------------------------------------------------------------------------
+toggleBtn.MouseButton1Click:Connect(function()
+	aimEnabled = not aimEnabled
+	if aimEnabled then
 		lockedTarget = GetBestTarget()
-		print("[TEST STUDIO] Re-targeted to:", lockedTarget and lockedTarget.Parent.Name or "None")
+
+		if lockedTarget then
+			toggleBtn.Text = "AUTO AIM: LOCKED"
+			toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+		else
+			toggleBtn.Text = "NO TARGET!"
+			toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
+		end
+	else
+		lockedTarget = nil
+		toggleBtn.Text = "AUTO AIM: OFF"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
 	end
 end)
