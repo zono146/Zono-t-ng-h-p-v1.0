@@ -9,41 +9,81 @@ local aimEnabled = false
 local lockedTarget = nil
 
 --------------------------------------------------------------------------------
--- 1. TẠO GIAO DIỆN MENU BẬT / TẮT (GUI)
+-- 1. TẠO KHUNG MAIN GUI MỚI (RỘNG RÃI & MỞ RỘNG)
 --------------------------------------------------------------------------------
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "HeartBattlegroundAimGui"
+screenGui.Name = "HeartBattlegroundTestBench"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
+-- Bảng Main mới rộng 220px, cao 240px (tha hồ chứa tính năng)
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 200, 0, 100)
-mainFrame.Position = UDim2.new(0.05, 0, 0.4, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+mainFrame.Size = UDim2.new(0, 220, 0, 240)
+mainFrame.Position = UDim2.new(0.05, 0, 0.35, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 mainFrame.BorderSizePixel = 2
-mainFrame.BorderColor3 = Color3.fromRGB(255, 50, 50)
+mainFrame.BorderColor3 = Color3.fromRGB(255, 60, 60)
 mainFrame.Active = true
 mainFrame.Draggable = true
 mainFrame.Parent = screenGui
 
+-- Tiêu đề Bảng
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, 0, 0, 30)
-titleLabel.Text = "AUTO AIM"
+titleLabel.Size = UDim2.new(1, 0, 0, 32)
+titleLabel.Text = "⚡ HEART BATTLEGROUND ⚡"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+titleLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.TextSize = 14
 titleLabel.Parent = mainFrame
 
+--------------------------------------------------------------------------------
+-- GIAO DIỆN CÁC NÚT BẤM (UI BUTTONS)
+--------------------------------------------------------------------------------
+
+-- Nút 1: AUTO AIM (Ổn định)
 local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0.8, 0, 0.4, 0)
-toggleBtn.Position = UDim2.new(0.1, 0, 0.45, 0)
+toggleBtn.Size = UDim2.new(0.88, 0, 0, 35)
+toggleBtn.Position = UDim2.new(0.06, 0, 0.18, 0)
 toggleBtn.Text = "AUTO AIM: OFF"
 toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
 toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleBtn.Font = Enum.Font.SourceSansBold
-toggleBtn.TextSize = 16
+toggleBtn.TextSize = 14
 toggleBtn.Parent = mainFrame
+
+-- Nút 2: TÍNH NĂNG THỬ NGHIỆM MỚI 1 (Slot 1)
+local expBtn1 = Instance.new("TextButton")
+expBtn1.Size = UDim2.new(0.88, 0, 0, 35)
+expBtn1.Position = UDim2.new(0.06, 0, 0.36, 0)
+expBtn1.Text = "[THỬ NGHIỆM 1] CHỜ YÊU CẦU..."
+expBtn1.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+expBtn1.TextColor3 = Color3.fromRGB(200, 200, 200)
+expBtn1.Font = Enum.Font.SourceSansBold
+expBtn1.TextSize = 12
+expBtn1.Parent = mainFrame
+
+-- Nút 3: TÍNH NĂNG THỬ NGHIỆM MỚI 2 (Slot 2)
+local expBtn2 = Instance.new("TextButton")
+expBtn2.Size = UDim2.new(0.88, 0, 0, 35)
+expBtn2.Position = UDim2.new(0.06, 0, 0.54, 0)
+expBtn2.Text = "[THỬ NGHIỆM 2] CHỜ YÊU CẦU..."
+expBtn2.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+expBtn2.TextColor3 = Color3.fromRGB(200, 200, 200)
+expBtn2.Font = Enum.Font.SourceSansBold
+expBtn2.TextSize = 12
+expBtn2.Parent = mainFrame
+
+-- Ghi chú nhỏ phía dưới
+local infoLabel = Instance.new("TextLabel")
+infoLabel.Size = UDim2.new(1, 0, 0, 30)
+infoLabel.Position = UDim2.new(0, 0, 0.82, 0)
+infoLabel.Text = "Dev Test Bench v2.0"
+infoLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
+infoLabel.BackgroundTransparency = 1
+infoLabel.Font = Enum.Font.SourceSansItalic
+infoLabel.TextSize = 12
+infoLabel.Parent = mainFrame
 
 --------------------------------------------------------------------------------
 -- 2. HÀM QUÉT DÒ TÌM MỤC TIÊU BAN ĐẦU
@@ -89,7 +129,7 @@ local function GetBestTarget()
 end
 
 --------------------------------------------------------------------------------
--- 3. VÒNG LẶP AIM (GIỮ CAMERA TẬP TRUNG VÀO NHÂN VẬT & MỤC TIÊU)
+-- 3. VÒNG LẶP AIM (CAMERA GÓC NHÌN THỨ 3 ỔN ĐỊNH)
 --------------------------------------------------------------------------------
 RunService.RenderStepped:Connect(function()
 	if aimEnabled and lockedTarget then
@@ -107,19 +147,19 @@ RunService.RenderStepped:Connect(function()
 			local lookAtPos = Vector3.new(targetPos.X, myPos.Y, targetPos.Z)
 			myHRP.CFrame = CFrame.new(myPos, lookAtPos)
 
-			-- 2. Lấy khoảng cách Zoom hiện tại của người chơi (hỗ trợ phóng to/thu nhỏ)
+			-- 2. Lấy khoảng cách Zoom hiện tại
 			local currentZoom = (Camera.CFrame.Position - myPos).Magnitude
-			if currentZoom < 2 then currentZoom = 10 end -- Mặc định nếu quá gần
+			if currentZoom < 2 then currentZoom = 10 end
 
 			-- 3. Tính toán hướng từ Nhân vật -> Đến Đối thủ
 			local dirToTarget = (targetPos - myPos).Unit
 			if dirToTarget.Magnitude == 0 then dirToTarget = myHRP.CFrame.LookVector end
 
-			-- 4. Đặt Camera ở PHÍA SAU LƯNG nhân vật (lùi lại theo hướng đối thủ + nhếch cao lên một chút)
+			-- 4. Đặt Camera ở PHÍA SAU LƯNG nhân vật
 			local camOffset = -dirToTarget * currentZoom + Vector3.new(0, 2.5, 0)
 			local newCamPos = myPos + camOffset
 
-			-- 5. Cập nhật Camera luôn nhìn về phía đối thủ
+			-- 5. Cập nhật Camera nhìn về phía đối thủ
 			Camera.CFrame = CFrame.new(newCamPos, targetPos)
 		else
 			-- Mục tiêu chết hoặc hủy
@@ -129,7 +169,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 --------------------------------------------------------------------------------
--- 4. BẬT / TẮT
+-- 4. SỰ KIỆN NÚT AUTO AIM
 --------------------------------------------------------------------------------
 toggleBtn.MouseButton1Click:Connect(function()
 	aimEnabled = not aimEnabled
@@ -148,4 +188,15 @@ toggleBtn.MouseButton1Click:Connect(function()
 		toggleBtn.Text = "AUTO AIM: OFF"
 		toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
 	end
+end)
+
+--------------------------------------------------------------------------------
+-- 5. SỰ KIỆN CÁC NÚT THỬ NGHIỆM MỚI (CHỜ LẬP TRÌNH)
+--------------------------------------------------------------------------------
+expBtn1.MouseButton1Click:Connect(function()
+	print("Đã bấm Ô Thử Nghiệm 1 - Chưa gán tính năng!")
+end)
+
+expBtn2.MouseButton1Click:Connect(function()
+	print("Đã bấm Ô Thử Nghiệm 2 - Chưa gán tính năng!")
 end)
