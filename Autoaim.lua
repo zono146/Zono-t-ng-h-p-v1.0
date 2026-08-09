@@ -1,4 +1,4 @@
--- Services & Variables
+-- LocalScript / Command Bar Test trong Roblox Studio
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
@@ -67,53 +67,43 @@ RunService.RenderStepped:Connect(function()
 			local targetPos = lockedTarget.Position
 			local myPos = myHRP.Position
 			
-			-- 1. Xoay nhân vật hướng mặt về phía đối thủ
+			-- Xoay nhân vật hướng mặt về phía đối thủ
 			local lookAtPos = Vector3.new(targetPos.X, myPos.Y, targetPos.Z)
 			myHRP.CFrame = CFrame.new(myPos, lookAtPos)
 
-			-- 2. Lấy khoảng cách Zoom hiện tại của người chơi
+			-- Lấy khoảng cách Zoom hiện tại
 			local currentZoom = (Camera.CFrame.Position - myPos).Magnitude
 			if currentZoom < 2 then currentZoom = 10 end
 
-			-- 3. Tính toán hướng từ Nhân vật -> Đến Đối thủ
+			-- Tính hướng từ Nhân vật -> Đối thủ
 			local dirToTarget = (targetPos - myPos).Unit
 			if dirToTarget.Magnitude == 0 then dirToTarget = myHRP.CFrame.LookVector end
 
-			-- 4. Đặt Camera ở PHÍA SAU LƯNG nhân vật
+			-- Đặt Camera phía sau lưng
 			local camOffset = -dirToTarget * currentZoom + Vector3.new(0, 2.5, 0)
 			local newCamPos = myPos + camOffset
 
-			-- 5. Cập nhật Camera luôn nhìn về phía đối thủ
+			-- Cập nhật CFrame Camera
 			Camera.CFrame = CFrame.new(newCamPos, targetPos)
 		else
-			-- Mục tiêu chết/mất -> Tự động tìm lại mục tiêu mới nếu vẫn bật Aim
+			-- Tự tìm lại mục tiêu nếu mục tiêu cũ chết hoặc mất
 			lockedTarget = GetBestTarget()
 		end
 	end
 end)
 
 --------------------------------------------------------------------------------
--- 3. TẠO MENU REDZ V2 & KẾT NỐI TÍNH NĂNG AIM
+-- 3. KHỞI TẠO MENU REDZ V2
 --------------------------------------------------------------------------------
-loadstring(game:HttpGet(("https://raw.githubusercontent.com/daucobonhi/Ui-Redz-V2/refs/heads/main/UiREDzV2.lua")))()
+local redzlib = loadstring(game:HttpGet("https://raw.githubusercontent.com/daucobonhi/Ui-Redz-V2/refs/heads/main/UiREDzV2.lua"))()
 
 local Window = MakeWindow({
   Hub = {
-    Title = "Zonoreal Hub",
-    Animation = "Zonoreal Hub"
+    Title = "HEART BATTLEGROUND",
+    Animation = "Dev Testing Menu"
   },
   Key = {
-    KeySystem = false,
-    Title = "",
-    Description = "",
-    KeyLink = "",
-    Keys = {""},
-    Notifi = {
-      Notifications = true,
-      CorrectKey = "Running",
-      Incorrectkey = "incorrect",
-      CopyKeyLink = "Copied"
-    }
+    KeySystem = false
   }
 })
 
@@ -126,11 +116,32 @@ MinimizeButton({
   StrokeColor = Color3.fromRGB(255, 0, 0)
 })
 
------- Tab Thử Nghiệm
-local Tab1 = MakeTab({Name = "AIMBOT"})
+-- Tạo Tab
+local Tab1 = MakeTab({Name = "Thử nghiệm"})
 
------- Các Chức Năng
-Tab1:AddToggle({
+-- Hàm bổ trợ giúp hiển thị đúng UI cho Redz V2 trong Studio
+local function SafeAddToggle(tabObj, config)
+    if typeof(AddToggle) == "function" then
+        return AddToggle(tabObj, config)
+    elseif tabObj and typeof(tabObj.AddToggle) == "function" then
+        return tabObj:AddToggle(config)
+    end
+end
+
+local function SafeAddButton(tabObj, config)
+    if typeof(AddButton) == "function" then
+        return AddButton(tabObj, config)
+    elseif tabObj and typeof(tabObj.AddButton) == "function" then
+        return tabObj:AddButton(config)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- 4. TẠO CÁC NÚT ĐIỀU KHIỂN AIM
+--------------------------------------------------------------------------------
+
+-- Toggle Auto Aim
+SafeAddToggle(Tab1, {
   Name = "Auto Aim (Khóa Mục Tiêu)",
   Description = "Tự động khóa Camera & xoay hướng mặt vào đối thủ",
   Default = false,
@@ -144,9 +155,10 @@ Tab1:AddToggle({
   end
 })
 
-Tab1:AddButton({
+-- Nút quét lại mục tiêu
+SafeAddButton(Tab1, {
   Name = "Đổi Mục Tiêu (Re-target)",
-  Description = "Quét lại mục tiêu mới gần nhất",
+  Description = "Quét tìm đối thủ/Dummy khác gần nhất",
   Callback = function()
     if aimEnabled then
       lockedTarget = GetBestTarget()
