@@ -89,7 +89,7 @@ local function GetBestTarget()
 end
 
 --------------------------------------------------------------------------------
--- 3. VÒNG LẶP AIM (CHỈ BẢO TRÌ VÀ KHÓA CAMERA VÀO MỤC TIÊU)
+-- 3. VÒNG LẶP AIM (CAMERA ĐI THEO NHÂN VẬT & XOAY VỀ MỤC TIÊU)
 --------------------------------------------------------------------------------
 RunService.RenderStepped:Connect(function()
 	if aimEnabled and lockedTarget then
@@ -101,12 +101,25 @@ RunService.RenderStepped:Connect(function()
 
 		if parentModel and hum and hum.Health > 0 and myHRP then
 			local targetPos = lockedTarget.Position
-			local camPos = Camera.CFrame.Position
+			local myPos = myHRP.Position
+			
+			-- 1. Lấy khoảng cách Zoom hiện tại giữa Camera và Nhân vật
+			local currentZoom = (Camera.CFrame.Position - myPos).Magnitude
+			if currentZoom < 2 then currentZoom = 10 end -- Độ xa mặc định nếu zoom quá gần
 
-			-- Đặt lại góc nhìn của Camera hướng về phía mục tiêu, giữ nguyên vị trí hiện tại của Camera
-			Camera.CFrame = CFrame.new(camPos, targetPos)
+			-- 2. Tính hướng từ Nhân vật đến Đối thủ
+			local dirToTarget = (targetPos - myPos).Unit
+			if dirToTarget.Magnitude == 0 then dirToTarget = myHRP.CFrame.LookVector end
+
+			-- 3. Đặt vị trí Camera LÙI VỀ SAU LƯNG nhân vật (dựa trên hướng nhìn sang đối thủ)
+			-- Giúp nhân vật LUÔN NẰM TRONG KHUNG HÌNH kể cả khi di chuyển sang trái/phải
+			local camOffset = -dirToTarget * currentZoom + Vector3.new(0, 2.5, 0)
+			local newCamPos = myPos + camOffset
+
+			-- 4. Cập nhật Camera nhìn về phía đối thủ mà KHÔNG xoay nhân vật
+			Camera.CFrame = CFrame.new(newCamPos, targetPos)
 		else
-			-- Mục tiêu chết hoặc hủy
+			-- Mục tiêu chết hoặc mất dấu
 			lockedTarget = nil
 		end
 	end
