@@ -89,7 +89,7 @@ local function GetBestTarget()
 end
 
 --------------------------------------------------------------------------------
--- 3. VÒNG LẶP AIM (GIỮ CAMERA TẬP TRUNG VÀO NHÂN VẬT & MỤC TIÊU)
+-- 3. VÒNG LẶP AIM (CHỈ BẢO TRÌ VÀ KHÓA CAMERA VÀO MỤC TIÊU)
 --------------------------------------------------------------------------------
 RunService.RenderStepped:Connect(function()
 	if aimEnabled and lockedTarget then
@@ -101,26 +101,10 @@ RunService.RenderStepped:Connect(function()
 
 		if parentModel and hum and hum.Health > 0 and myHRP then
 			local targetPos = lockedTarget.Position
-			local myPos = myHRP.Position
-			
-			-- 1. Xoay nhân vật hướng mặt về phía đối thủ
-			local lookAtPos = Vector3.new(targetPos.X, myPos.Y, targetPos.Z)
-			myHRP.CFrame = CFrame.new(myPos, lookAtPos)
+			local camPos = Camera.CFrame.Position
 
-			-- 2. Lấy khoảng cách Zoom hiện tại của người chơi (hỗ trợ phóng to/thu nhỏ)
-			local currentZoom = (Camera.CFrame.Position - myPos).Magnitude
-			if currentZoom < 2 then currentZoom = 10 end -- Mặc định nếu quá gần
-
-			-- 3. Tính toán hướng từ Nhân vật -> Đến Đối thủ
-			local dirToTarget = (targetPos - myPos).Unit
-			if dirToTarget.Magnitude == 0 then dirToTarget = myHRP.CFrame.LookVector end
-
-			-- 4. Đặt Camera ở PHÍA SAU LƯNG nhân vật (lùi lại theo hướng đối thủ + nhếch cao lên một chút)
-			local camOffset = -dirToTarget * currentZoom + Vector3.new(0, 2.5, 0)
-			local newCamPos = myPos + camOffset
-
-			-- 5. Cập nhật Camera luôn nhìn về phía đối thủ
-			Camera.CFrame = CFrame.new(newCamPos, targetPos)
+			-- Đặt lại góc nhìn của Camera hướng về phía mục tiêu, giữ nguyên vị trí hiện tại của Camera
+			Camera.CFrame = CFrame.new(camPos, targetPos)
 		else
 			-- Mục tiêu chết hoặc hủy
 			lockedTarget = nil
