@@ -4,14 +4,16 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Trạng thái Aim & Biến Lưu Mục Tiêu Khóa
+--==============================================================
+-- STATE
+--==============================================================
+
 local aimEnabled = false
 local lockedTarget = nil
 
-
----
-
--- 1. TẠO GIAO DIỆN MENU BẬT / TẮT (GUI)
+--==============================================================
+-- GUI
+--==============================================================
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "HeartBattlegroundAimGui"
@@ -35,6 +37,297 @@ titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.TextSize = 14
+titleLabel.Parent = mainFrame
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0.8, 0, 0.4, 0)
+toggleBtn.Position = UDim2.new(0.1, 0, 0.45, 0)
+toggleBtn.Text = "AUTO AIM: OFF"
+toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextSize = 16
+toggleBtn.Parent = mainFrame
+
+--==============================================================
+-- TARGET VALIDATION
+--==============================================================
+
+local function IsTargetValid(target)
+	if not target then
+		return false
+	end
+
+	if not target.Parent then
+		return false
+	end
+
+	local model = target.Parent
+
+	if not model:IsA("Model") then
+		return false
+	end
+
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+	if not humanoid then
+		return false
+	end
+
+	if humanoid.Health <= 0 then
+		return false
+	end
+
+	-- Target part still has to exist in the workspace
+	if not target:IsDescendantOf(workspace) then
+		return false
+	end
+
+	return true
+end
+
+--==============================================================
+-- FIND NEW TARGET
+--==============================================================
+
+local function GetBestTarget()
+	local myChar = LocalPlayer.Character
+
+	if not myChar then
+		return nil
+	end
+
+	local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+
+	if not myHRP then
+		return nil
+	end
+
+	local myPos = myHRP.Position
+
+	local closestAngleTarget = nil
+	local smallestAngle = 45
+
+	local closestDistanceTarget = nil
+	local smallestDistance = math.huge
+
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("Model") and obj ~= myChar then
+
+			local hum = obj:FindFirstChildOfClass("Humanoid")
+			local hrp = obj:FindFirstChild("HumanoidRootPart")
+				or obj:FindFirstChild("Head")
+
+			if hum and hrp and hum.Health > 0 then
+
+				local targetPos = hrp.Position
+				local dist = (targetPos - myPos).Magnitude
+
+				-- Distance target
+				if dist < smallestDistance then
+					smallestDistance = dist
+					closestDistanceTarget = hrp
+				end
+
+				-- Angle target
+				local cameraPosition = Camera.CFrame.Position
+				local cameraDirection = Camera.CFrame.LookVector
+
+				local direction = targetPos - cameraPosition
+
+				if direction.Magnitude > 0 then
+					local dirToTarget = direction.Unit
+
+					local dot = math.clamp(
+						cameraDirection:Dot(dirToTarget),
+						-1,
+						1
+					)
+
+					local angle = math.deg(math.acos(dot))
+
+					if angle < smallestAngle then
+						smallestAngle = angle
+						closestAngleTarget = hrp
+					end
+				end
+			end
+		end
+	end
+
+	return closestAngleTarget or closestDistanceTarget
+end
+
+--==============================================================
+-- ACQUIRE / REACQUIRE TARGET
+--==============================================================
+
+local function AcquireTarget()
+	if not aimEnabled then
+		lockedTarget = nil
+		return
+	end
+
+	local newTarget = GetBestTarget()
+
+	if newTarget then
+		lockedTarget = newTarget
+
+		toggleBtn.Text = "AUTO AIM: LOCKED"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+	else
+		lockedTarget = nil
+
+		toggleBtn.Text = "NO TARGET!"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
+	end
+end
+
+--==============================================================
+-- AIM LOOP
+--==============================================================
+
+RunService.RenderStepped:Connect(function()
+
+	if not aimEnabled then
+		return
+	end
+
+	--==========================================================
+	-- CURRENT TARGET INVALID -> FIND ANOTHER
+	--==========================================================
+
+	if not IsTargetValid(lockedTarget) then
+		lockedTarget = nil
+		AcquireTarget()
+	end
+
+	--==========================================================
+	-- NO TARGET AVAILABLE
+	--==========================================================
+
+	if not lockedTarget then
+		return
+	end
+
+	local myChar = LocalPlayer.Character
+	local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+	if not myHRP then
+		return
+	end
+
+	--==========================================================
+	-- AIM AT TARGET
+	--==========================================================
+
+	local targetPos = lockedTarget.Position
+	local myPos = myHRP.Position
+
+	local currentZoom =
+		(Camera.CFrame.Position - myPos).Magnitude
+
+	if currentZoom < 2 then
+		currentZoom = 10
+	end
+
+	local direction = targetPos - myPos
+
+	if direction.Magnitude <= 0 then
+		direction = myHRP.CFrame.LookVector
+	end
+
+	local dirToTarget = direction.Unit
+
+	local camOffset =
+		-dirToTarget * currentZoom
+		+ Vector3.new(0, 2.5, 0)
+
+	local newCamPos =
+		myPos + camOffset
+
+	Camera.CFrame =
+		CFrame.new(newCamPos, targetPos)
+end)
+
+--==============================================================
+-- TOGGLE
+--==============================================================
+
+toggleBtn.MouseButton1Click:Connect(function()
+
+	aimEnabled = not aimEnabled
+
+	if aimEnabled then
+
+		toggleBtn.Text = "SEARCHING..."
+		toggleBtn.BackgroundColor3 =
+			Color3.fromRGB(200, 150, 0)
+
+		AcquireTarget()
+
+	else
+
+		lockedTarget = nil
+
+		toggleBtn.Text = "AUTO AIM: OFF"
+		toggleBtn.BackgroundColor3 =
+			Color3.fromRGB(150, 50, 50)
+	end
+end)
+
+--==============================================================
+-- PLAYER RESPAWN / CHARACTER CHANGES
+--==============================================================
+
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function()
+		if aimEnabled then
+			task.wait(0.15)
+
+			-- Recheck because a new character may have appeared
+			if not IsTargetValid(lockedTarget) then
+				AcquireTarget()
+			end
+		end
+	end)
+end)
+
+for _, player in ipairs(Players:GetPlayers()) do
+	if player ~= LocalPlayer then
+		player.CharacterAdded:Connect(function()
+			if aimEnabled then
+				task.wait(0.15)
+
+				if not IsTargetValid(lockedTarget) then
+					AcquireTarget()
+				end
+			end
+		end)
+	end
+end
+
+--==============================================================
+-- ALSO HANDLE PLAYERS LEAVING
+--==============================================================
+
+Players.PlayerRemoving:Connect(function(player)
+
+	if not lockedTarget then
+		return
+	end
+
+	local targetModel = lockedTarget.Parent
+	local targetPlayer = Players:GetPlayerFromCharacter(targetModel)
+
+	if targetPlayer == player then
+		lockedTarget = nil
+
+		if aimEnabled then
+			AcquireTarget()
+		end
+	end
+end)titleLabel.TextSize = 14
 titleLabel.Parent = mainFrame
 
 local toggleBtn = Instance.new("TextButton")
