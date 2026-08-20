@@ -50,27 +50,41 @@ toggleBtn.TextSize = 16
 toggleBtn.Parent = mainFrame
 
 --==============================================================
--- TARGET VALIDATION
+-- HELPER: LẤY CHARACTER GỐC CỦA OBJECT
 --==============================================================
 
-local function IsTargetValid(target)
+local function GetCharacterFromTarget(target)
 	if not target then
-		return false
+		return nil
 	end
 
-	if not target.Parent then
-		return false
-	end
+	local model = target:FindFirstAncestorOfClass("Model")
 
-	local model = target.Parent
-
-	if not model:IsA("Model") then
-		return false
+	if not model then
+		return nil
 	end
 
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 
 	if not humanoid then
+		return nil
+	end
+
+	return model, humanoid
+end
+
+--==============================================================
+-- HELPER: KIỂM TRA TARGET CÓ CÒN HỢP LỆ
+--==============================================================
+
+local function IsTargetValid(target)
+	if not target or not target.Parent then
+		return false
+	end
+
+	local model, humanoid = GetCharacterFromTarget(target)
+
+	if not model or not humanoid then
 		return false
 	end
 
@@ -78,8 +92,9 @@ local function IsTargetValid(target)
 		return false
 	end
 
-	-- Target part still has to exist in the workspace
-	if not target:IsDescendantOf(workspace) then
+	local myChar = LocalPlayer.Character
+
+	if model == myChar then
 		return false
 	end
 
@@ -87,7 +102,56 @@ local function IsTargetValid(target)
 end
 
 --==============================================================
--- FIND NEW TARGET
+-- HELPER: KIỂM TRA CÓ NHÌN THẤY TARGET KHÔNG
+--==============================================================
+
+local function IsTargetVisible(target)
+	if not IsTargetValid(target) then
+		return false
+	end
+
+	local myChar = LocalPlayer.Character
+
+	if not myChar then
+		return false
+	end
+
+	local origin = Camera.CFrame.Position
+	local direction = target.Position - origin
+
+	if direction.Magnitude <= 0 then
+		return true
+	end
+
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	raycastParams.FilterDescendantsInstances = {
+		myChar
+	}
+
+	local result = workspace:Raycast(
+		origin,
+		direction,
+		raycastParams
+	)
+
+	-- Không có vật chắn
+	if not result then
+		return true
+	end
+
+	-- Nếu ray chạm chính target hoặc model của target
+	local targetModel = target:FindFirstAncestorOfClass("Model")
+
+	if targetModel and result.Instance:IsDescendantOf(targetModel) then
+		return true
+	end
+
+	return false
+end
+
+--==============================================================
+-- TÌM MỤC TIÊU GẦN NHẤT
 --==============================================================
 
 local function GetBestTarget()
@@ -105,86 +169,66 @@ local function GetBestTarget()
 
 	local myPos = myHRP.Position
 
-	local closestAngleTarget = nil
-	local smallestAngle = 45
-
-	local closestDistanceTarget = nil
-	local smallestDistance = math.huge
+	local closestTarget = nil
+	local closestDistance = math.huge
 
 	for _, obj in ipairs(workspace:GetDescendants()) do
+
 		if obj:IsA("Model") and obj ~= myChar then
 
-			local hum = obj:FindFirstChildOfClass("Humanoid")
-			local hrp = obj:FindFirstChild("HumanoidRootPart")
+			local humanoid = obj:FindFirstChildOfClass("Humanoid")
+
+			local targetPart =
+				obj:FindFirstChild("HumanoidRootPart")
 				or obj:FindFirstChild("Head")
 
-			if hum and hrp and hum.Health > 0 then
+			if humanoid
+				and targetPart
+				and humanoid.Health > 0 then
 
-				local targetPos = hrp.Position
-				local dist = (targetPos - myPos).Magnitude
+				local distance =
+					(targetPart.Position - myPos).Magnitude
 
-				-- Distance target
-				if dist < smallestDistance then
-					smallestDistance = dist
-					closestDistanceTarget = hrp
-				end
+				-- Ưu tiên khoảng cách gần nhất
+				if distance < closestDistance then
 
-				-- Angle target
-				local cameraPosition = Camera.CFrame.Position
-				local cameraDirection = Camera.CFrame.LookVector
-
-				local direction = targetPos - cameraPosition
-
-				if direction.Magnitude > 0 then
-					local dirToTarget = direction.Unit
-
-					local dot = math.clamp(
-						cameraDirection:Dot(dirToTarget),
-						-1,
-						1
-					)
-
-					local angle = math.deg(math.acos(dot))
-
-					if angle < smallestAngle then
-						smallestAngle = angle
-						closestAngleTarget = hrp
+					-- Chỉ chọn mục tiêu đang nhìn thấy được
+					if IsTargetVisible(targetPart) then
+						closestDistance = distance
+						closestTarget = targetPart
 					end
+
 				end
 			end
 		end
 	end
 
-	return closestAngleTarget or closestDistanceTarget
+	return closestTarget
 end
 
 --==============================================================
--- ACQUIRE / REACQUIRE TARGET
+-- LOCK TARGET
 --==============================================================
 
-local function AcquireTarget()
+local function AcquireNewTarget()
 	if not aimEnabled then
 		lockedTarget = nil
 		return
 	end
 
-	local newTarget = GetBestTarget()
+	lockedTarget = GetBestTarget()
 
-	if newTarget then
-		lockedTarget = newTarget
-
+	if lockedTarget then
 		toggleBtn.Text = "AUTO AIM: LOCKED"
 		toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
 	else
-		lockedTarget = nil
-
 		toggleBtn.Text = "NO TARGET!"
 		toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
 	end
 end
 
 --==============================================================
--- AIM LOOP
+-- CAMERA AIM LOOP
 --==============================================================
 
 RunService.RenderStepped:Connect(function()
@@ -193,36 +237,56 @@ RunService.RenderStepped:Connect(function()
 		return
 	end
 
-	--==========================================================
-	-- CURRENT TARGET INVALID -> FIND ANOTHER
-	--==========================================================
+	local myChar = LocalPlayer.Character
+	local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
 
-	if not IsTargetValid(lockedTarget) then
+	-- Nếu character của mình chưa tồn tại
+	if not myHRP then
 		lockedTarget = nil
-		AcquireTarget()
+		return
 	end
 
 	--==========================================================
-	-- NO TARGET AVAILABLE
+	-- KIỂM TRA TARGET HIỆN TẠI
+	--==========================================================
+
+	if not IsTargetValid(lockedTarget)
+		or not IsTargetVisible(lockedTarget) then
+
+		AcquireNewTarget()
+	end
+
+	--==========================================================
+	-- NẾU VẪN KHÔNG CÓ TARGET THÌ DỪNG
 	--==========================================================
 
 	if not lockedTarget then
 		return
 	end
 
-	local myChar = LocalPlayer.Character
-	local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+	--==========================================================
+	-- LẤY THÔNG TIN TARGET
+	--==========================================================
 
-	if not myHRP then
+	local parentModel, humanoid =
+		GetCharacterFromTarget(lockedTarget)
+
+	if not parentModel or not humanoid then
+		AcquireNewTarget()
 		return
 	end
 
-	--==========================================================
-	-- AIM AT TARGET
-	--==========================================================
+	if humanoid.Health <= 0 then
+		AcquireNewTarget()
+		return
+	end
 
 	local targetPos = lockedTarget.Position
 	local myPos = myHRP.Position
+
+	--==========================================================
+	-- GIỮ ZOOM HIỆN TẠI
+	--==========================================================
 
 	local currentZoom =
 		(Camera.CFrame.Position - myPos).Magnitude
@@ -231,20 +295,32 @@ RunService.RenderStepped:Connect(function()
 		currentZoom = 10
 	end
 
+	--==========================================================
+	-- HƯỚNG TỪ PLAYER TỚI TARGET
+	--==========================================================
+
 	local direction = targetPos - myPos
 
-	if direction.Magnitude <= 0 then
+	if direction.Magnitude <= 0.001 then
 		direction = myHRP.CFrame.LookVector
+	else
+		direction = direction.Unit
 	end
 
-	local dirToTarget = direction.Unit
+	--==========================================================
+	-- CAMERA Ở SAU PLAYER
+	--==========================================================
 
 	local camOffset =
-		-dirToTarget * currentZoom
+		-direction * currentZoom
 		+ Vector3.new(0, 2.5, 0)
 
 	local newCamPos =
 		myPos + camOffset
+
+	--==========================================================
+	-- XOAY CAMERA VỀ TARGET
+	--==========================================================
 
 	Camera.CFrame =
 		CFrame.new(newCamPos, targetPos)
@@ -260,11 +336,7 @@ toggleBtn.MouseButton1Click:Connect(function()
 
 	if aimEnabled then
 
-		toggleBtn.Text = "SEARCHING..."
-		toggleBtn.BackgroundColor3 =
-			Color3.fromRGB(200, 150, 0)
-
-		AcquireTarget()
+		AcquireNewTarget()
 
 	else
 
@@ -277,178 +349,33 @@ toggleBtn.MouseButton1Click:Connect(function()
 end)
 
 --==============================================================
--- PLAYER RESPAWN / CHARACTER CHANGES
+-- KHI CHARACTER CỦA PLAYER RESPAWN
 --==============================================================
 
-Players.PlayerAdded:Connect(function(player)
-	player.CharacterAdded:Connect(function()
-		if aimEnabled then
-			task.wait(0.15)
+LocalPlayer.CharacterAdded:Connect(function()
+	if aimEnabled then
 
-			-- Recheck because a new character may have appeared
-			if not IsTargetValid(lockedTarget) then
-				AcquireTarget()
-			end
-		end
-	end)
+		lockedTarget = nil
+
+		task.wait(0.2)
+
+		AcquireNewTarget()
+	end
 end)
 
-for _, player in ipairs(Players:GetPlayers()) do
-	if player ~= LocalPlayer then
-		player.CharacterAdded:Connect(function()
-			if aimEnabled then
-				task.wait(0.15)
-
-				if not IsTargetValid(lockedTarget) then
-					AcquireTarget()
-				end
-			end
-		end)
-	end
-end
-
 --==============================================================
--- ALSO HANDLE PLAYERS LEAVING
+-- TỰ KIỂM TRA KHI PLAYER KHÁC RỜI GAME
 --==============================================================
 
 Players.PlayerRemoving:Connect(function(player)
-
-	if not lockedTarget then
+	if not aimEnabled or not lockedTarget then
 		return
 	end
 
-	local targetModel = lockedTarget.Parent
-	local targetPlayer = Players:GetPlayerFromCharacter(targetModel)
+	local targetModel = lockedTarget:FindFirstAncestorOfClass("Model")
 
-	if targetPlayer == player then
+	if targetModel and Players:GetPlayerFromCharacter(targetModel) == player then
 		lockedTarget = nil
-
-		if aimEnabled then
-			AcquireTarget()
-		end
+		AcquireNewTarget()
 	end
-end)titleLabel.TextSize = 14
-titleLabel.Parent = mainFrame
-
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0.8, 0, 0.4, 0)
-toggleBtn.Position = UDim2.new(0.1, 0, 0.45, 0)
-toggleBtn.Text = "AUTO AIM: OFF"
-toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleBtn.Font = Enum.Font.SourceSansBold
-toggleBtn.TextSize = 16
-toggleBtn.Parent = mainFrame
-
-
----
-
--- 2. HÀM QUÉT DÒ TÌM MỤC TIÊU BAN ĐẦU
-
-local function GetBestTarget()
-local myChar = LocalPlayer.Character
-if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
-local myPos = myChar.HumanoidRootPart.Position
-
-local closestAngleTarget = nil
-local smallestAngle = 45
-
-local closestDistanceTarget = nil
-local smallestDistance = math.huge
-
-for _, obj in pairs(workspace:GetDescendants()) do
-if obj:IsA("Model") and obj ~= myChar then
-local hum = obj:FindFirstChildOfClass("Humanoid")
-local hrp = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Head")
-
-if hum and hrp and hum.Health > 0 then    
-		local targetPos = hrp.Position    
-		local dist = (targetPos - myPos).Magnitude    
-
-		local camDirection = Camera.CFrame.LookVector    
-		local dirToTarget = (targetPos - Camera.CFrame.Position).Unit    
-		local angle = math.deg(math.acos(camDirection:Dot(dirToTarget)))    
-
-		if angle < smallestAngle then    
-			smallestAngle = angle    
-			closestAngleTarget = hrp    
-		end    
-
-		if dist < smallestDistance then    
-			smallestDistance = dist    
-			closestDistanceTarget = hrp    
-		end    
-	end    
-end
-
-end
-
-return closestAngleTarget or closestDistanceTarget
-
-end
-
-
----
-
--- 3. VÒNG LẶP AIM (CAMERA ĐI THEO NHÂN VẬT & XOAY VỀ MỤC TIÊU)
-
-RunService.RenderStepped:Connect(function()
-if aimEnabled and lockedTarget then
-local myChar = LocalPlayer.Character
-local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-
-local parentModel = lockedTarget.Parent
-local hum = parentModel and parentModel:FindFirstChildOfClass("Humanoid")
-
-if parentModel and hum and hum.Health > 0 and myHRP then    
-	local targetPos = lockedTarget.Position    
-	local myPos = myHRP.Position    
-	    
-	-- 1. Lấy khoảng cách Zoom hiện tại giữa Camera và Nhân vật    
-	local currentZoom = (Camera.CFrame.Position - myPos).Magnitude    
-	if currentZoom < 2 then currentZoom = 10 end -- Độ xa mặc định nếu zoom quá gần    
-
-	-- 2. Tính hướng từ Nhân vật đến Đối thủ    
-	local dirToTarget = (targetPos - myPos).Unit    
-	if dirToTarget.Magnitude == 0 then dirToTarget = myHRP.CFrame.LookVector end    
-
-	-- 3. Đặt vị trí Camera LÙI VỀ SAU LƯNG nhân vật (dựa trên hướng nhìn sang đối thủ)    
-	-- Giúp nhân vật LUÔN NẰM TRONG KHUNG HÌNH kể cả khi di chuyển sang trái/phải    
-	local camOffset = -dirToTarget * currentZoom + Vector3.new(0, 2.5, 0)    
-	local newCamPos = myPos + camOffset    
-
-	-- 4. Cập nhật Camera nhìn về phía đối thủ mà KHÔNG xoay nhân vật    
-	Camera.CFrame = CFrame.new(newCamPos, targetPos)    
-else    
-	-- Mục tiêu chết hoặc mất dấu    
-	lockedTarget = nil    
-end
-
-end
-
-end)
-
-
----
-
--- 4. BẬT / TẮT
-
-toggleBtn.MouseButton1Click:Connect(function()
-aimEnabled = not aimEnabled
-if aimEnabled then
-lockedTarget = GetBestTarget()
-
-if lockedTarget then
-toggleBtn.Text = "AUTO AIM: LOCKED"
-toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
-else
-toggleBtn.Text = "NO TARGET!"
-toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
-end
-else
-lockedTarget = nil
-toggleBtn.Text = "AUTO AIM: OFF"
-toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-end
-
 end)
