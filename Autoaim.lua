@@ -1,7 +1,7 @@
 --[[
 ==============================================================
  HEART BATTLEGROUND
- Auto Aim + Random TP
+ Auto Aim + DOUBLE-SPEED Random TP
 ==============================================================
 ]]
 
@@ -19,10 +19,23 @@ local aimEnabled = false
 local lockedTarget = nil
 
 local randomTPEnabled = false
+
+-- This is captured ONCE when Random TP is enabled.
+-- Nothing else is allowed to overwrite it while the feature
+-- remains enabled.
 local originalCFrame = nil
+
 local randomTPAccumulator = 0
-local randomTPDelay = 0.45
+
+-- Previous: 0.45
+-- New: half the delay = 0.225
+local randomTPDelay = 0.225
+
 local lastRandomTarget = nil
+
+-- Used to make it impossible for the teleport routine to
+-- accidentally execute a "return to start" operation.
+local randomTPSessionId = 0
 
 --==============================================================
 -- GUI
@@ -105,6 +118,7 @@ end
 --==============================================================
 
 local function GetBestTarget()
+
 	local myChar = LocalPlayer.Character
 
 	if not myChar then
@@ -139,6 +153,7 @@ local function GetBestTarget()
 			if hum and hrp and hum.Health > 0 then
 
 				local targetPos = hrp.Position
+
 				local dist =
 					(targetPos - myPos).Magnitude
 
@@ -171,6 +186,7 @@ local function GetBestTarget()
 						closestAngleTarget = hrp
 
 					end
+
 				end
 
 				if dist < smallestDistance then
@@ -179,12 +195,16 @@ local function GetBestTarget()
 					closestDistanceTarget = hrp
 
 				end
+
 			end
+
 		end
+
 	end
 
 	return closestAngleTarget
 		or closestDistanceTarget
+
 end
 
 --==============================================================
@@ -195,10 +215,9 @@ local function GetRandomPlayer()
 
 	local candidates = {}
 
-	local myCharacter =
-		LocalPlayer.Character
-
-	for _, player in ipairs(Players:GetPlayers()) do
+	for _, player in ipairs(
+		Players:GetPlayers()
+	) do
 
 		if player ~= LocalPlayer then
 
@@ -218,23 +237,29 @@ local function GetRandomPlayer()
 				and humanoid.Health > 0
 			then
 
-				-- Avoid selecting the exact same player twice
-				-- whenever another valid player exists.
+				-- Prefer not to immediately hit the same target
+				-- twice in a row.
 				if player ~= lastRandomTarget then
+
 					table.insert(
 						candidates,
 						player
 					)
+
 				end
 
 			end
+
 		end
+
 	end
 
-	-- If only one valid player exists, allow them again.
+	-- Only one valid opponent might exist.
 	if #candidates == 0 then
 
-		for _, player in ipairs(Players:GetPlayers()) do
+		for _, player in ipairs(
+			Players:GetPlayers()
+		) do
 
 			if player ~= LocalPlayer then
 
@@ -260,8 +285,11 @@ local function GetRandomPlayer()
 					)
 
 				end
+
 			end
+
 		end
+
 	end
 
 	if #candidates == 0 then
@@ -274,36 +302,48 @@ local function GetRandomPlayer()
 			#candidates
 		)
 	]
+
 end
 
 --==============================================================
 -- RANDOM TELEPORT
 --==============================================================
 
-local function RandomTeleport()
+local function RandomTeleport(sessionId)
+
+	----------------------------------------------------------
+	-- Hard session guard
+	--
+	-- This prevents an old scheduled teleport from executing
+	-- after the feature has been switched off.
+	----------------------------------------------------------
 
 	if not randomTPEnabled then
 		return
 	end
 
-	local myCharacter =
-		LocalPlayer.Character
-
-	if not myCharacter then
+	if sessionId ~= randomTPSessionId then
 		return
 	end
 
-	local myRoot =
-		GetRoot(myCharacter)
+	local character =
+		LocalPlayer.Character
 
-	if not myRoot then
+	if not character then
 		return
 	end
 
 	local humanoid =
-		GetHumanoid(myCharacter)
+		GetHumanoid(character)
 
-	if not humanoid or humanoid.Health <= 0 then
+	local root =
+		GetRoot(character)
+
+	if
+		not humanoid
+		or humanoid.Health <= 0
+		or not root
+	then
 		return
 	end
 
@@ -324,28 +364,44 @@ local function RandomTeleport()
 		return
 	end
 
-	-- Remember which player was selected.
-	lastRandomTarget = target
-
-	-- Actual character relocation.
+	----------------------------------------------------------
+	-- IMPORTANT:
+	-- originalCFrame is NOT touched here.
 	--
-	-- PivotTo changes the character's world transform.
-	-- The small vertical offset prevents the character from
-	-- being placed directly inside the target's root.
+	-- It is exclusively the "restore on disable" location.
+	----------------------------------------------------------
+
+	lastRandomTarget =
+		target
+
+	----------------------------------------------------------
+	-- Random offset around target
+	----------------------------------------------------------
+
+	local randomOffset = CFrame.new(
+		math.random(-4, 4),
+		math.random(2, 4),
+		math.random(-4, 4)
+	)
+
 	local destination =
 		targetRoot.CFrame
-		* CFrame.new(
-			math.random(-4, 4),
-			2,
-			math.random(-4, 4)
-		)
+		* randomOffset
 
-	myCharacter:PivotTo(destination)
+	----------------------------------------------------------
+	-- REAL CHARACTER RELOCATION
+	----------------------------------------------------------
 
-	-- Stop leftover velocity from making the character
-	-- immediately drift away after teleporting.
+	character:PivotTo(
+		destination
+	)
+
+	----------------------------------------------------------
+	-- Clear leftover physics velocity.
+	----------------------------------------------------------
+
 	local newRoot =
-		GetRoot(myCharacter)
+		GetRoot(character)
 
 	if newRoot then
 
@@ -357,9 +413,18 @@ local function RandomTeleport()
 
 	end
 
-	-- Randomize the next jump slightly.
+	----------------------------------------------------------
+	-- DOUBLE SPEED
+	--
+	-- Random delay between 0.1125 and 0.18 seconds.
+	-- The old system averaged around 0.45 seconds.
+	----------------------------------------------------------
+
 	randomTPDelay =
-		math.random(30, 70) / 100
+		math.random(
+			1125,
+			1800
+		) / 10000
 
 end
 
@@ -367,292 +432,369 @@ end
 -- AIM LOOP
 --==============================================================
 
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(
+	function()
 
-	if not aimEnabled or not lockedTarget then
-		return
-	end
-
-	local myChar =
-		LocalPlayer.Character
-
-	local myHRP =
-		myChar and
-		myChar:FindFirstChild(
-			"HumanoidRootPart"
-		)
-
-	local parentModel =
-		lockedTarget.Parent
-
-	local hum =
-		parentModel
-		and parentModel:FindFirstChildOfClass(
-			"Humanoid"
-		)
-
-	if
-		parentModel
-		and hum
-		and hum.Health > 0
-		and myHRP
-	then
-
-		local targetPos =
-			lockedTarget.Position
-
-		local myPos =
-			myHRP.Position
-
-		local currentZoom =
-			(
-				Camera.CFrame.Position
-				- myPos
-			).Magnitude
-
-		if currentZoom < 2 then
-			currentZoom = 10
-		end
-
-		local offset =
-			targetPos - myPos
-
-		if offset.Magnitude <= 0 then
+		if
+			not aimEnabled
+			or not lockedTarget
+		then
 			return
 		end
 
-		local dirToTarget =
-			offset.Unit
+		local myChar =
+			LocalPlayer.Character
 
-		local camOffset =
-			-dirToTarget * currentZoom
-			+ Vector3.new(
-				0,
-				2.5,
-				0
+		local myHRP =
+			myChar
+			and myChar:FindFirstChild(
+				"HumanoidRootPart"
 			)
 
-		local newCamPos =
-			myPos + camOffset
+		local parentModel =
+			lockedTarget.Parent
 
-		Camera.CFrame =
-			CFrame.new(
-				newCamPos,
-				targetPos
+		local hum =
+			parentModel
+			and parentModel:FindFirstChildOfClass(
+				"Humanoid"
 			)
 
-	else
+		if
+			parentModel
+			and hum
+			and hum.Health > 0
+			and myHRP
+		then
 
-		lockedTarget = nil
+			local targetPos =
+				lockedTarget.Position
+
+			local myPos =
+				myHRP.Position
+
+			local currentZoom =
+				(
+					Camera.CFrame.Position
+					- myPos
+				).Magnitude
+
+			if currentZoom < 2 then
+				currentZoom = 10
+			end
+
+			local offset =
+				targetPos - myPos
+
+			if offset.Magnitude <= 0 then
+				return
+			end
+
+			local dirToTarget =
+				offset.Unit
+
+			local camOffset =
+				-dirToTarget * currentZoom
+				+ Vector3.new(
+					0,
+					2.5,
+					0
+				)
+
+			local newCamPos =
+				myPos + camOffset
+
+			Camera.CFrame =
+				CFrame.new(
+					newCamPos,
+					targetPos
+				)
+
+		else
+
+			lockedTarget = nil
+
+		end
 
 	end
-
-end)
+)
 
 --==============================================================
 -- RANDOM TP LOOP
 --==============================================================
 
-RunService.Heartbeat:Connect(function(deltaTime)
+RunService.Heartbeat:Connect(
+	function(deltaTime)
 
-	if not randomTPEnabled then
-		return
+		if not randomTPEnabled then
+			return
+		end
+
+		randomTPAccumulator +=
+			deltaTime
+
+		if
+			randomTPAccumulator >=
+			randomTPDelay
+		then
+
+			randomTPAccumulator = 0
+
+			-- Capture the CURRENT session so an outdated
+			-- teleport can't fire after disabling.
+			local sessionId =
+				randomTPSessionId
+
+			RandomTeleport(
+				sessionId
+			)
+
+		end
+
 	end
-
-	randomTPAccumulator += deltaTime
-
-	if randomTPAccumulator >= randomTPDelay then
-
-		randomTPAccumulator = 0
-
-		RandomTeleport()
-
-	end
-
-end)
+)
 
 --==============================================================
 -- AIM TOGGLE
 --==============================================================
 
-toggleBtn.MouseButton1Click:Connect(function()
+toggleBtn.MouseButton1Click:Connect(
+	function()
 
-	aimEnabled =
-		not aimEnabled
+		aimEnabled =
+			not aimEnabled
 
-	if aimEnabled then
+		if aimEnabled then
 
-		lockedTarget =
-			GetBestTarget()
+			lockedTarget =
+				GetBestTarget()
 
-		if lockedTarget then
+			if lockedTarget then
+
+				toggleBtn.Text =
+					"AUTO AIM: LOCKED"
+
+				toggleBtn.BackgroundColor3 =
+					Color3.fromRGB(
+						50,
+						150,
+						50
+					)
+
+			else
+
+				aimEnabled = false
+
+				toggleBtn.Text =
+					"AUTO AIM: NO TARGET"
+
+				toggleBtn.BackgroundColor3 =
+					Color3.fromRGB(
+						200,
+						100,
+						0
+					)
+
+			end
+
+		else
+
+			lockedTarget = nil
 
 			toggleBtn.Text =
-				"AUTO AIM: LOCKED"
+				"AUTO AIM: OFF"
 
 			toggleBtn.BackgroundColor3 =
+				Color3.fromRGB(
+					150,
+					50,
+					50
+				)
+
+		end
+
+	end
+)
+
+--==============================================================
+-- RANDOM TP ENABLE / DISABLE
+--==============================================================
+
+randomTPBtn.MouseButton1Click:Connect(
+	function()
+
+		----------------------------------------------------------
+		-- ENABLE
+		----------------------------------------------------------
+
+		if not randomTPEnabled then
+
+			local character =
+				LocalPlayer.Character
+
+			local root =
+				GetRoot(character)
+
+			if not root then
+
+				randomTPBtn.Text =
+					"RANDOM TP: NO CHARACTER"
+
+				randomTPBtn.BackgroundColor3 =
+					Color3.fromRGB(
+						200,
+						100,
+						0
+					)
+
+				return
+
+			end
+
+			------------------------------------------------------
+			-- NEW SESSION
+			------------------------------------------------------
+
+			randomTPEnabled = true
+
+			randomTPSessionId += 1
+
+			------------------------------------------------------
+			-- SAVE ORIGINAL POSITION ONCE.
+			--
+			-- NOTHING DURING THE ACTIVE SESSION overwrites this.
+			------------------------------------------------------
+
+			originalCFrame =
+				character:GetPivot()
+
+			lastRandomTarget = nil
+
+			randomTPAccumulator = 0
+
+			randomTPDelay =
+				0.1125
+
+			randomTPBtn.Text =
+				"RANDOM TP: ACTIVE"
+
+			randomTPBtn.BackgroundColor3 =
 				Color3.fromRGB(
 					50,
 					150,
 					50
 				)
 
-		else
+			------------------------------------------------------
+			-- Immediate first teleport.
+			------------------------------------------------------
 
-			aimEnabled = false
+			local sessionId =
+				randomTPSessionId
 
-			toggleBtn.Text =
-				"AUTO AIM: NO TARGET"
-
-			toggleBtn.BackgroundColor3 =
-				Color3.fromRGB(
-					200,
-					100,
-					0
-				)
-
-		end
-
-	else
-
-		lockedTarget = nil
-
-		toggleBtn.Text =
-			"AUTO AIM: OFF"
-
-		toggleBtn.BackgroundColor3 =
-			Color3.fromRGB(
-				150,
-				50,
-				50
+			RandomTeleport(
+				sessionId
 			)
 
-	end
+		----------------------------------------------------------
+		-- DISABLE
+		----------------------------------------------------------
 
-end)
+		else
 
---==============================================================
--- RANDOM TP TOGGLE
---==============================================================
-
-randomTPBtn.MouseButton1Click:Connect(function()
-
-	randomTPEnabled =
-		not randomTPEnabled
-
-	if randomTPEnabled then
-
-		local character =
-			LocalPlayer.Character
-
-		local root =
-			GetRoot(character)
-
-		if not root then
+			------------------------------------------------------
+			-- Invalidate all scheduled teleports FIRST.
+			------------------------------------------------------
 
 			randomTPEnabled = false
 
+			randomTPSessionId += 1
+
+			randomTPAccumulator = 0
+
 			randomTPBtn.Text =
-				"RANDOM TP: NO CHARACTER"
+				"RANDOM TP: OFF"
 
 			randomTPBtn.BackgroundColor3 =
 				Color3.fromRGB(
-					200,
-					100,
-					0
+					150,
+					50,
+					50
 				)
 
-			return
-		end
+			------------------------------------------------------
+			-- ONLY HERE do we restore the original position.
+			------------------------------------------------------
 
-		-- Save the exact location before any teleport occurs.
-		originalCFrame =
-			character:GetPivot()
+			if originalCFrame then
 
-		lastRandomTarget = nil
-		randomTPAccumulator = 0
+				local character =
+					LocalPlayer.Character
 
-		randomTPBtn.Text =
-			"RANDOM TP: ACTIVE"
+				if character then
 
-		randomTPBtn.BackgroundColor3 =
-			Color3.fromRGB(
-				50,
-				150,
-				50
-			)
+					character:PivotTo(
+						originalCFrame
+					)
 
-		-- Perform the first jump immediately.
-		RandomTeleport()
+					local root =
+						GetRoot(character)
 
-	else
+					if root then
 
-		randomTPBtn.Text =
-			"RANDOM TP: OFF"
+						root.AssemblyLinearVelocity =
+							Vector3.zero
 
-		randomTPBtn.BackgroundColor3 =
-			Color3.fromRGB(
-				150,
-				50,
-				50
-			)
+						root.AssemblyAngularVelocity =
+							Vector3.zero
 
-		-- Return to the exact transform saved when the
-		-- feature was enabled.
-		if originalCFrame then
-
-			local character =
-				LocalPlayer.Character
-
-			if character then
-
-				character:PivotTo(
-					originalCFrame
-				)
-
-				local root =
-					GetRoot(character)
-
-				if root then
-
-					root.AssemblyLinearVelocity =
-						Vector3.zero
-
-					root.AssemblyAngularVelocity =
-						Vector3.zero
+					end
 
 				end
 
 			end
 
+			------------------------------------------------------
+			-- Clear saved state AFTER restoration.
+			------------------------------------------------------
+
+			originalCFrame = nil
+			lastRandomTarget = nil
+
 		end
 
-		originalCFrame = nil
-		lastRandomTarget = nil
-		randomTPAccumulator = 0
-
 	end
-
-end)
+)
 
 --==============================================================
 -- RESPAWN HANDLING
 --==============================================================
 
-LocalPlayer.CharacterAdded:Connect(function(character)
+LocalPlayer.CharacterAdded:Connect(
+	function(character)
 
-	-- A respawn creates a completely new character, so the old
-	-- transform is no longer valid.
-
-	if randomTPEnabled then
+		----------------------------------------------------------
+		-- IMPORTANT FIX:
+		--
+		-- Do NOT overwrite originalCFrame here.
+		--
+		-- The old version replaced the saved position whenever
+		-- CharacterAdded fired. That defeats the "return to the
+		-- original starting position" contract.
+		----------------------------------------------------------
 
 		task.wait(0.2)
 
-		originalCFrame =
-			character:GetPivot()
+		if randomTPEnabled then
 
-		randomTPAccumulator = 0
+			-- Keep the ORIGINAL SESSION position untouched.
+
+			randomTPAccumulator = 0
+
+			randomTPDelay =
+				0.1125
+
+		end
 
 	end
-
-end)
+)
